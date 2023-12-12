@@ -2,6 +2,66 @@ version: '3.7'
 
 services:
 
+  traefik:
+    image: "traefik:v2.10"
+    container_name: "traefik"
+    command:
+      - "--log.level=DEBUG"
+      - '--api=true'
+      - '--api.insecure=true'
+      - '--api.dashboard=true'
+      - "--accesslog=true"
+      - "--accesslog.filePath=/logs/access.log"
+      - "--accesslog.bufferingsize=1000"
+      - "--accesslog.format=json"
+      - "--accesslog.filters.statuscodes=200,300-302,400-404,500-501-502-503-504-505"
+      - "--accesslog.filters.retryattempts"
+      - "--accesslog.filters.minduration=10ms"
+      - "--providers.docker=true"
+      - '--providers.docker.endpoint=unix:///var/run/docker.sock'
+      - "--providers.docker.exposedbydefault=false"
+      - '--providers.docker.network=app-network'
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--entrypoints.web.http.redirections.entrypoint.permanent=true"
+      - "--certificatesresolvers.myresolver.acme.tlschallenge=true"
+      #- "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web-secure"
+      #- "--certificatesresolvers.myresolver.acme.tlschallenge.resolvers=ns101.cloudns.net,ns102.cloudns.net,ns103.cloudns.net,ns104.cloudns.net,pns101.cloudns.net,pns102.cloudns.net,pns103.cloudns.net,pns104.cloudns.net"
+      #- "--certificatesresolvers.myresolver.acme.caserver=https://acme-staging-v02.api.letsencrypt.org/directory"
+      - "--certificatesresolvers.myresolver.acme.email=eg.ahmad@me.com"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      - "CLOUDNS_AUTH_ID=5233"
+      - "CLOUDNS_AUTH_PASSWORD=!SadButTrue1542"
+      - "CLOUDNS_PROPAGATION_TIMEOUT=600"
+      - "CLOUDNS_HTTP_TIMEOUT=600"
+      #- "TZ=US/Alaska"
+    labels:
+      - "traefik.enable=false"
+      #- "traefik.http.routers.api.rule=Host(`traefik.YOURDOMAIN.COM`)"
+      #- "traefik.http.routers.dashboard.rule=PathPrefix(`/api`) || PathPrefix(`/dashboard`)"
+      #- "traefik.http.routers.dashboard.entrypoints=websecure"
+      #- "traefik.http.routers.dashboard.service=api@internal"
+      #- 'traefik.http.routers.traefik.rule=(Host(`server.afdal.me`))' # Put in your domain
+      #- 'traefik.http.routers.traefik.entrypoints=web,websecure'
+      #- 'traefik.http.routers.traefik.tls.certresolver=myresolver'
+      #- 'traefik.http.routers.traefik.service=api@internal'
+      #- 'traefik.http.services.api@internal.loadbalancer.server.port=8080' # Required in swarms, https://doc.traefik.io/traefik/v2.0/routing/providers/docker/#services
+      #- 'traefik.http.routers.traefik.middlewares=traefik-auth'
+      #- 'traefik.http.middlewares.traefik-auth.basicauth.users=user:$$apr1$$q8eZFHjF$$Fvmkk//V6Btlaf2i/ju5n/' # username: user, password: password
+      #https://server.afdal.me/
+    volumes:
+      - ~/volumes/traefik/letsencrypt:/letsencrypt
+      - "/var/run/docker.sock:/var/run/docker.sock:ro"
+      - ~/volumes/traefik/logs/:/logs/
+    networks:
+      - "elk"
+
   # The 'setup' service runs a one-off script which initializes users inside
   # Elasticsearch — such as 'logstash_internal' and 'kibana_system' — with the
   # values of the passwords defined in the '.env' file. It also creates the
@@ -63,6 +123,24 @@ services:
       # Use single node discovery in order to disable production mode and avoid bootstrap checks.
       # see: https://www.elastic.co/guide/en/elasticsearch/reference/current/bootstrap-checks.html
       discovery.type: single-node
+
+      #My security settings
+      #xpack.security.enabled: true
+      #xpack.security.transport.ssl.enabled: true
+      #xpack.security.transport.ssl.key: certs/instance/instance.key
+      #xpack.security.transport.ssl.key_passphrase: mypassphrase
+      #xpack.security.transport.ssl.certificate: certs/instance/instance.crt
+      #xpack.security.transport.ssl.certificate_authorities: "certs/ca.crt" 
+      #xpack.security.http.ssl.enabled: true
+      #xpack.security.http.ssl.key: certs/instance/instance.key
+      #xpack.security.http.ssl.key_passphrase: mypassphrase
+      #xpack.security.http.ssl.certificate: certs/instance/instance.crt
+      #xpack.security.http.ssl.certificate_authorities: "certs/ca.crt" 
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.elastic.rule=Host(`${ELASTIC_DOMAIN}`)"
+      - "traefik.http.routers.elastic.entrypoints=web,websecure"
+      - "traefik.http.routers.elastic.tls.certresolver=myresolver"
     networks:
       - elk
     restart: unless-stopped
@@ -104,6 +182,11 @@ services:
       - elk
     depends_on:
       - elasticsearch
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.kibana.rule=Host(`${KIBANA_DOMAIN}`)"
+      - "traefik.http.routers.kibana.entrypoints=web,websecure"
+      - "traefik.http.routers.kibana.tls.certresolver=myresolver"
     restart: unless-stopped
 
 networks:
